@@ -256,6 +256,17 @@ func (c *Chatter) SendMessage(partnerIdentity *PublicKey,
 	//return message, errors.New("Not implemented")
 }
 
+func decryptCipher(time int, cipher []byte, key *SymmetricKey, IV []byte) (string, *SymmetricKey) {
+
+	newKey := key.Duplicate()
+	for i := 0; i < time; i++ {
+		newKey = newKey.DeriveKey(CHAIN_LABEL)
+	}
+
+	plaintext, _ := newKey.AuthenticatedDecrypt(cipher, nil, IV)
+	return plaintext, newKey
+}
+
 // ReceiveMessage is used to receive the given message and return the correct
 // plaintext. This method is where most of the key derivation, ratcheting
 // and out-of-order message handling logic happens.
@@ -265,7 +276,20 @@ func (c *Chatter) ReceiveMessage(message *Message) (string, error) {
 		return "", errors.New("Can't receive message from partner with no open session")
 	}
 
-	// TODO: your code here
+	// sync
+	//handle the initial case
+	var cur_key *SymmetricKey
+	partner := message.Sender
+	//send_counter := message.Counter
+	receive_counter := c.Sessions[*partner].ReceiveCounter
+	if receive_counter == 0 {
+		cur_key = c.Sessions[*partner].RootChain
+	} else {
+		cur_key = c.Sessions[*partner].ReceiveChain
+	}
+	plaintext, next_key := decryptCipher(1, message.Ciphertext, cur_key, message.IV)
 
-	return "", errors.New("Not implemented")
+	c.Sessions[*partner].ReceiveCounter = receive_counter + 1
+	c.Sessions[*partner].ReceiveChain = next_key
+	return plaintext, nil
 }
